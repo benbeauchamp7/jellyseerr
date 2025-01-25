@@ -1,4 +1,5 @@
 import { MediaServerType } from '@server/constants/server';
+import blacktagsProcessor from '@server/job/blacktagsProcessor';
 import availabilitySync from '@server/lib/availabilitySync';
 import downloadTracker from '@server/lib/downloadtracker';
 import ImageProxy from '@server/lib/imageproxy';
@@ -21,7 +22,7 @@ interface ScheduledJob {
   job: schedule.Job;
   name: string;
   type: 'process' | 'command';
-  interval: 'seconds' | 'minutes' | 'hours' | 'fixed';
+  interval: 'seconds' | 'minutes' | 'hours' | 'days' | 'fixed';
   cronSchedule: string;
   running?: () => boolean;
   cancelFn?: () => void;
@@ -223,6 +224,24 @@ export const startJobs = (): void => {
     }),
   });
 
+  // Generate blacklist based on keywords weekly at 1:30 am
+  scheduledJobs.push({
+    id: 'process-blacklisted-tags',
+    name: 'Process Blacktags',
+    type: 'process',
+    interval: 'days',
+    cronSchedule: jobs['process-blacklisted-tags'].schedule,
+    job: schedule.scheduleJob(jobs['process-blacklisted-tags'].schedule, () => {
+      logger.info('Starting scheduled job: Process Blacktags', {
+        label: 'Jobs',
+      });
+      blacktagsProcessor.run();
+    }),
+    running: () => blacktagsProcessor.status().running,
+    cancelFn: () => blacktagsProcessor.cancel(),
+  });
+
+  // Refresh plex token everyday at 01:00 am
   scheduledJobs.push({
     id: 'plex-refresh-token',
     name: 'Plex Refresh Token',
